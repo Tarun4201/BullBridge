@@ -1,4 +1,6 @@
-# 📈 BullBridge
+---
+
+## 📈 BullBridge
 
 **BullBridge** is an AI-powered stock intelligence and portfolio management mobile application built for modern investors. By bridging the gap between traditional market metrics and advanced artificial intelligence, BullBridge delivers a premium, secure, and intuitive trading experience. 
 
@@ -29,35 +31,56 @@ Built beautifully with **React Native (Expo)**, it features interactive TradingV
 ## 🚀 Getting Started
 
 ### Prerequisites
-Make sure you have [Node.js](https://nodejs.org/) (v20+) installed on your machine.
-For active Android builds, ensure Android Studio and the Java 21 JDK are configured properly in your workspace.
+
+*   **Node.js**: Version 20 or higher.
+*   **npm or yarn**: To manage dependencies.
+*   **Android Studio / Xcode**: For running on emulators (optional).
+*   **Expo Go App**: Download from the App Store or Google Play Store (recommended for quick viewing).
 
 ### Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/your-username/bullbridge.git
-   cd bullbridge
-   ```
+1.  **Clone the repository**
+    ```bash
+    git clone https://github.com/your-username/bullbridge.git
+    cd bullbridge
+    ```
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+2.  **Install dependencies**
+    ```bash
+    npm install
+    ```
 
-3. **Configure Google OAuth (Optional)**
-   Open `app/(auth)/login.tsx` and replace the placeholder `YOUR_ANDROID_CLIENT_ID_HERE` on line 33 with your generated Google Cloud Platform Android Client ID to activate Google login.
+### 📱 How to View the App
 
-### Running the App
+There are three main ways to view and interact with **BullBridge**:
 
-Start the Expo Development Server:
+#### 1. Using Expo Go (Simplest & Recommended)
+This is the fastest way to see the app on your own physical phone without needing a full development environment.
+1.  Ensure your phone and computer are on the **same Wi-Fi network**.
+2.  Start the development server:
+    ```bash
+    npx expo start
+    ```
+3.  A **QR Code** will appear in your terminal.
+4.  Open the **Expo Go** app on your phone and scan the QR code.
+5.  Wait a moment for the JavaScript bundle to load, and you're in!
+
+#### 2. Using an Emulator (Android/iOS)
+If you have **Android Studio** or **Xcode** installed:
+1.  Start the development server:
+    ```bash
+    npx expo start
+    ```
+2.  Press **`a`** to open the Android Emulator.
+3.  Press **`i`** to open the iOS Simulator (Mac only).
+
+#### 3. Development Build
+For deep native testing, you can trigger a local build:
 ```bash
-npm run start
+npm run android
+# OR
+npm run ios
 ```
-From here, you can run the app on:
-- **iOS Simulator**: Press `i`
-- **Android Emulator**: Press `a`
-- **Physical Device**: Scan the QR code using the Expo Go app.
 
 ---
 
@@ -72,5 +95,10 @@ From here, you can run the app on:
 ---
 
 ## 📜 License & Disclaimers
+
 **BullBridge** was developed primarily as a Hackathon architecture. 
-*Disclaimer: All AI predictions and targets within this app are for **educational purposes only**. This application is not a registered SEBI financial advisor. Always conduct your own research before making real market trades.*
+
+> [!CAUTION]
+> **Disclaimer**: All AI predictions and targets within this app are for **educational purposes only**. This application is not a registered SEBI financial advisor. Always conduct your own research before making real market trades.
+
+---
