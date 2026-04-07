@@ -11,7 +11,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { ThemeColors } from '../../constants/colors';
 import { useTheme } from '../../theme/ThemeProvider';
 import { Typography, Spacing, BorderRadius } from '../../constants/theme';
-import { notifications } from '../../constants/mockData';
 import { Notification, NotificationType } from '../../types';
 
 function getNotificationConfig(theme: ThemeColors): Record<NotificationType, { icon: string; color: string }> {
@@ -28,7 +27,7 @@ function getNotificationConfig(theme: ThemeColors): Record<NotificationType, { i
 export default function NotificationsScreen() {
   const { theme } = useTheme();
   const styles = getStyles(theme);
-  const [notifs, setNotifs] = useState<Notification[]>(notifications);
+  const [notifs, setNotifs] = useState<Notification[]>([]);
 
   const markAsRead = (id: string) => {
     setNotifs(prev =>

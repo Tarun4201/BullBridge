@@ -7,7 +7,6 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../types';
-import { mockUser } from '../constants/mockData';
 
 interface AuthState {
   user: User | null;
@@ -79,10 +78,12 @@ export const useAuthStore = create<AuthState>()(
         
         // Create user profile
         const newUserProfile: User = {
-          ...mockUser, // Inherit base properties like portfolio, etc for initial state 
           id: Date.now().toString(),
           name,
           email,
+          experienceLevel: 'Beginner',
+          sectors: [],
+          joinedDate: new Date().toISOString().split('T')[0],
           hasAcknowledgedDisclaimer: state.hasAcknowledgedDisclaimer
         };
 
@@ -122,10 +123,12 @@ export const useAuthStore = create<AuthState>()(
         } else {
           // Completely new Google user
           userProfile = {
-            ...mockUser,
             id: 'google-' + Date.now().toString(),
             name,
             email,
+            experienceLevel: 'Beginner',
+            sectors: [],
+            joinedDate: new Date().toISOString().split('T')[0],
             avatar: photoUrl,
             hasAcknowledgedDisclaimer: state.hasAcknowledgedDisclaimer
           };

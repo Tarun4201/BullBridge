@@ -4,7 +4,6 @@
  */
 
 import { create } from 'zustand';
-import { defaultWatchlist, allStocks } from '../constants/mockData';
 import { Stock } from '../types';
 
 interface WatchlistState {
@@ -15,11 +14,11 @@ interface WatchlistState {
   removeFromWatchlist: (ticker: string) => void;
   toggleWatchlist: (ticker: string) => void;
   isInWatchlist: (ticker: string) => boolean;
-  getWatchlistStocks: () => Stock[];
+  getWatchlistTickers: () => string[];
 }
 
 export const useWatchlistStore = create<WatchlistState>((set, get) => ({
-  watchlistTickers: [...defaultWatchlist],
+  watchlistTickers: [],
 
   addToWatchlist: (ticker) => {
     set((state) => ({
@@ -48,8 +47,7 @@ export const useWatchlistStore = create<WatchlistState>((set, get) => ({
     return get().watchlistTickers.includes(ticker);
   },
 
-  getWatchlistStocks: () => {
-    const tickers = get().watchlistTickers;
-    return allStocks.filter(s => tickers.includes(s.ticker));
+  getWatchlistTickers: () => {
+    return get().watchlistTickers;
   },
 }));

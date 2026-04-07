@@ -15,14 +15,18 @@ import { Typography, Spacing, BorderRadius } from '../../constants/theme';
 import { useTheme } from '../../theme/ThemeProvider';
 import { ThemeColors } from '../../constants/colors';
 import { useStockStore } from '../../stores/stockStore';
-import { allStocks } from '../../constants/mockData';
+import { StockAPI } from '../../services/api';
 import { Stock } from '../../types';
 
 export default function SearchScreen() {
   const { theme } = useTheme();
   const styles = getStyles(theme);
   const { searchQuery, setSearchQuery, searchResults, searchStocks, isLoadingSearch, recentSearches, addRecentSearch } = useStockStore();
-  const [trendingStocks] = useState(allStocks.slice(0, 6));
+  const [trendingStocks, setTrendingStocks] = useState<Stock[]>([]);
+
+  useEffect(() => {
+    StockAPI.getAll().then(setTrendingStocks);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {

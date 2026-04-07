@@ -1,175 +1,179 @@
 /**
- * Bull Bridge — API Service Layer
- * Mock API endpoints, structured for easy swap to real FastAPI backend
+ * Bull Bridge — API Service Layer (100% Live)
+ * Direct integration with Yahoo Finance and existing backend.
+ * No mock data fallbacks.
  */
 
-import { allStocks, stockPredictions, newsArticles, marketIndices, topGainers, topLosers, mostActive, generateCandleData } from '../constants/mockData';
-import { Stock, StockPredictions, NewsArticle, MarketIndex, StockQuote, CandleData } from '../types';
+import { Stock, MarketIndex, StockQuote, NewsArticle, StockPredictions, CandleData } from '../types';
 import { API_BASE_URL, checkBackendHealth } from './apiHealth';
 
-// Simulated API delay for local fallback
-const simulateDelay = (ms: number = 300) => new Promise(resolve => setTimeout(resolve, ms));
+const TRENDING_SYMBOLS = ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS', 'SBIN.NS', 'BHARTIARTL.NS'];
+
+// ─── Yahoo Finance Live API Layer ─────────────
+
+async function fetchYahooQuotes(tickers: string[]): Promise<Partial<Stock>[]> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${tickers.map(t => encodeURIComponent(t)).join(',')}`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timer);
+    
+    if (!res.ok) return [];
+    
+    const json = await res.json();
+    const results = json?.quoteResponse?.result || [];
+    
+    return results.map((meta: any) => ({
+      ticker: meta.symbol,
+      name: meta.longName || meta.shortName || meta.symbol,
+      exchange: meta.exchange || 'NSE',
+      price: meta.regularMarketPrice ?? meta.previousClose ?? 0,
+      previousClose: meta.regularMarketPreviousClose ?? meta.previousClose ?? 0,
+      open: meta.regularMarketOpen ?? meta.regularMarketPrice ?? 0,
+      dayHigh: meta.regularMarketDayHigh ?? meta.regularMarketPrice ?? 0,
+      dayLow: meta.regularMarketDayLow ?? meta.regularMarketPrice ?? 0,
+      change: meta.regularMarketChange ?? 0,
+      changePercent: meta.regularMarketChangePercent ?? 0,
+      volume: meta.regularMarketVolume ?? 0,
+      marketCap: meta.marketCap ? `₹${(meta.marketCap / 10000000).toFixed(2)}Cr` : '-',
+      pe: meta.trailingPE ? parseFloat(meta.trailingPE.toFixed(2)) : 0,
+      dividendYield: meta.dividendYield ?? 0,
+      low52Week: meta.fiftyTwoWeekLow ?? 0,
+      high52Week: meta.fiftyTwoWeekHigh ?? 0,
+    }));
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Stock API
  */
-// ─── Yahoo Finance Real-Time Price Layer ─────
-// Gets live quote and patches it onto mock stock data so stats match chart.
-const _priceCache: Record<string, { data: Partial<Stock>; ts: number }> = {};
-const PRICE_CACHE_TTL_MS = 60_000; // 1-minute cache
-
-async function fetchYahooQuote(ticker: string): Promise<Partial<Stock> | null> {
-  const now = Date.now();
-  if (_priceCache[ticker] && (now - _priceCache[ticker].ts) < PRICE_CACHE_TTL_MS) {
-    return _priceCache[ticker].data;
-  }
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`,
-      { signal: controller.signal }
-    );
-    clearTimeout(timer);
-    if (!res.ok) return null;
-    const json = await res.json();
-    const meta = json?.chart?.result?.[0]?.meta;
-    if (!meta) return null;
-    const live: Partial<Stock> = {
-      price: meta.regularMarketPrice ?? meta.previousClose,
-      previousClose: meta.chartPreviousClose ?? meta.previousClose,
-      open: meta.regularMarketOpen ?? meta.regularMarketPrice,
-      dayHigh: meta.regularMarketDayHigh ?? meta.regularMarketPrice,
-      dayLow: meta.regularMarketDayLow ?? meta.regularMarketPrice,
-      change: (meta.regularMarketPrice ?? 0) - (meta.chartPreviousClose ?? meta.previousClose ?? 0),
-      changePercent: meta.regularMarketChangePercent ?? 0,
-      volume: meta.regularMarketVolume ?? 0,
-    };
-    _priceCache[ticker] = { data: live, ts: now };
-    return live;
-  } catch {
-    return null;
-  }
-}
-
 export const StockAPI = {
-  /** Get all available stocks */
+  /** Get all available stocks (not supported without mock data, returns trending) */
   async getAll(): Promise<Stock[]> {
-    await simulateDelay(200);
-    return allStocks;
+    const quotes = await fetchYahooQuotes(TRENDING_SYMBOLS);
+    return quotes as Stock[];
   },
 
-  /** Get a single stock by ticker — patches live Yahoo price onto mock data */
+  /** Get a single stock by ticker */
   async getByTicker(ticker: string): Promise<Stock | undefined> {
-    const health = await checkBackendHealth();
-    if (health.status === 'ok') {
-      try {
-        const res = await fetch(`${API_BASE_URL}/stock/${ticker}`);
-        if (!res.ok) throw new Error('API Error');
-        return await res.json();
-      } catch (err) {
-        console.warn(`[Backend Down] Falling back to Yahoo + mock for: ${ticker}`, err);
-      }
+    const quotes = await fetchYahooQuotes([ticker]);
+    if (quotes && quotes.length > 0) {
+      return quotes[0] as Stock;
     }
-
-    // Base mock stock
-    const mockStock = allStocks.find(s => s.ticker === ticker);
-    if (!mockStock) return undefined;
-
-    // Patch with live Yahoo Finance prices for accuracy
-    const liveQuote = await fetchYahooQuote(ticker);
-    if (liveQuote) {
-      return { ...mockStock, ...liveQuote };
-    }
-    return mockStock;
+    return undefined;
   },
 
-  /** Search stocks by name or ticker using live backend proxy */
+  /** Search stocks using live Yahoo Finance search */
   async search(query: string): Promise<Stock[]> {
     if (!query) return [];
-    
-    const health = await checkBackendHealth();
-    if (health.status === 'ok') {
-      try {
-        const res = await fetch(`${API_BASE_URL}/stocks/search?q=${encodeURIComponent(query)}`);
-        if (res.ok) {
-          return await res.json();
-        }
-      } catch {
-        console.warn('[Backend Down] Search fallback to offline mock data');
-      }
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=10&country=India`, {
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (!res.ok) return [];
+      
+      const json = await res.json();
+      const quotes = json?.quotes || [];
+      
+      return quotes.map((q: any) => ({
+        ticker: q.symbol,
+        name: q.shortname || q.longname || q.symbol,
+        exchange: q.exchDisp || q.exchange || 'Unknown',
+        price: 0, change: 0, changePercent: 0, volume: 0,
+        dayHigh: 0, dayLow: 0, high52Week: 0, low52Week: 0,
+        marketCap: '-', pe: 0, dividendYield: 0, previousClose: 0, open: 0, sector: q.sector || '-'
+      } as Stock));
+    } catch {
+      return [];
     }
-    
-    await simulateDelay(100);
-    const q = query.toLowerCase();
-    return allStocks.filter(
-      s => s.name.toLowerCase().includes(q) || s.ticker.toLowerCase().includes(q)
-    );
   },
 
-  /** Get OHLCV candle data for a ticker */
+  /** Get OHLCV candle data for a ticker using Yahoo Finance */
   async getCandleData(ticker: string, days: number = 90): Promise<CandleData[]> {
-    await simulateDelay(300);
-    const stock = allStocks.find(s => s.ticker === ticker);
-    return generateCandleData(stock?.price || 1000, days);
+    try {
+      const range = days <= 5 ? "5d" : days <= 30 ? "1mo" : days <= 90 ? "3mo" : days <= 180 ? "6mo" : "1y";
+      const interval = days <= 5 ? "15m" : "1d";
+      
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (!res.ok) return [];
+
+      const json = await res.json();
+      const result = json?.chart?.result?.[0];
+      if (!result) return [];
+
+      const timestamps = result.timestamp || [];
+      const quote = result.indicators?.quote?.[0] || {};
+      
+      const candles: CandleData[] = [];
+      for (let i = 0; i < timestamps.length; i++) {
+        if (quote.open[i] !== null && quote.close[i] !== null) {
+          candles.push({
+            date: new Date(timestamps[i] * 1000).toISOString().split('T')[0],
+            open: parseFloat(quote.open[i].toFixed(2)),
+            high: parseFloat(quote.high[i].toFixed(2)),
+            low: parseFloat(quote.low[i].toFixed(2)),
+            close: parseFloat(quote.close[i].toFixed(2)),
+            volume: quote.volume[i] || 0,
+          });
+        }
+      }
+      return candles;
+    } catch {
+      return [];
+    }
   },
 };
 
 /**
  * Market API
  */
-// Local cache to avoid calling /market/trending 3x per refresh
-let _trendingCache: { data: any; ts: number } = { data: null, ts: 0 };
-const TRENDING_TTL_MS = 60_000; // 1 min client-side cache
-
-async function fetchTrending() {
-  const now = Date.now();
-  if (_trendingCache.data && (now - _trendingCache.ts) < TRENDING_TTL_MS) {
-    return _trendingCache.data;
-  }
-  try {
-    const res = await fetch(`${API_BASE_URL}/market/trending`);
-    if (res.ok) {
-      const data = await res.json();
-      _trendingCache = { data, ts: Date.now() };
-      return data;
-    }
-  } catch {}
-  return null;
-}
-
 export const MarketAPI = {
-  /** Get market indices */
+  /** Get market indices live */
   async getIndices(): Promise<MarketIndex[]> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/market/indices`);
-      if (!res.ok) throw new Error('API Error');
-      return await res.json();
-    } catch {
-      await simulateDelay(200);
-      return marketIndices;
-    }
+    const quotes = await fetchYahooQuotes(['^NSEI', '^BSESN', '^NSEBANK']);
+    return quotes.map(q => ({
+      name: q.ticker === '^NSEI' ? 'NIFTY 50' : q.ticker === '^BSESN' ? 'SENSEX' : 'NIFTY Bank',
+      ticker: q.ticker || '',
+      value: q.price || 0,
+      change: q.change || 0,
+      changePercent: q.changePercent || 0,
+    }));
   },
 
-  /** Get top gainers */
+  /** Get top gainers from trending list */
   async getTopGainers(): Promise<StockQuote[]> {
-    const data = await fetchTrending();
-    if (data?.topGainers) return data.topGainers;
-    return topGainers;
+    const quotes = await fetchYahooQuotes(TRENDING_SYMBOLS);
+    return quotes
+      .filter(q => (q.changePercent || 0) > 0)
+      .sort((a, b) => (b.changePercent || 0) - (a.changePercent || 0)) as StockQuote[];
   },
 
-  /** Get top losers */
+  /** Get top losers from trending list */
   async getTopLosers(): Promise<StockQuote[]> {
-    const data = await fetchTrending();
-    if (data?.topLosers) return data.topLosers;
-    return topLosers;
+    const quotes = await fetchYahooQuotes(TRENDING_SYMBOLS);
+    return quotes
+      .filter(q => (q.changePercent || 0) < 0)
+      .sort((a, b) => (a.changePercent || 0) - (b.changePercent || 0)) as StockQuote[];
   },
 
-  /** Get most active stocks */
+  /** Get most active stocks from trending list */
   async getMostActive(): Promise<StockQuote[]> {
-    const data = await fetchTrending();
-    if (data?.mostActive) return data.mostActive;
-    return mostActive;
+    const quotes = await fetchYahooQuotes(TRENDING_SYMBOLS);
+    return quotes
+      .sort((a, b) => (b.volume || 0) - (a.volume || 0)) as StockQuote[];
   },
 };
 
@@ -177,25 +181,25 @@ export const MarketAPI = {
  * AI Predictions API
  */
 export const PredictionAPI = {
-  /** Get predictions for a ticker */
+  /** Get predictions for a ticker - Returns undefined if backend fails, no mock fallback */
   async getByTicker(ticker: string): Promise<StockPredictions | undefined> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/ai/predict/${ticker}`);
-      if (!res.ok) throw new Error('API Error');
-      return await res.json();
-    } catch {
-      console.warn(`[Backend Down] Using mock AI simulation for ${ticker}`);
-      await simulateDelay(200);
-      return stockPredictions[ticker];
+    const health = await checkBackendHealth();
+    if (health.status === 'ok') {
+      try {
+        const res = await fetch(`${API_BASE_URL}/ai/predict/${ticker}`);
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.warn(`[API Error] Failed to fetch AI prediction for ${ticker}`, err);
+      }
     }
+    return undefined; // No mock fallback
   },
 
   /** Get predictions for multiple tickers */
   async getBatch(tickers: string[]): Promise<StockPredictions[]> {
-    await simulateDelay(600);
-    return tickers
-      .map(t => stockPredictions[t])
-      .filter(Boolean) as StockPredictions[];
+    return []; // Batches omitted when no mock data available, requires real backend endpoint
   },
 };
 
@@ -205,19 +209,22 @@ export const PredictionAPI = {
 export const NewsAPI = {
   /** Get latest market news */
   async getLatest(limit: number = 8): Promise<NewsArticle[]> {
-    await simulateDelay(300);
-    return newsArticles.slice(0, limit);
+    return []; // To be replaced with live news API if available
   },
 
   /** Get news for a specific stock */
   async getByTicker(ticker: string): Promise<NewsArticle[]> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/stocks/${ticker}/news`);
-      if (!res.ok) throw new Error('API Error');
-      return await res.json();
-    } catch {
-      await simulateDelay(200);
-      return newsArticles.filter(n => n.relatedTickers.includes(ticker));
+    const health = await checkBackendHealth();
+    if (health.status === 'ok') {
+      try {
+        const res = await fetch(`${API_BASE_URL}/stocks/${ticker}/news`);
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (err) {
+        console.warn(`[API Error] Failed to fetch news for ${ticker}`, err);
+      }
     }
+    return []; // No mock fallback
   },
 };
