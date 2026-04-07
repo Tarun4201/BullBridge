@@ -149,3 +149,24 @@ export interface MarketIndex {
 export type TimeFrame = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | '5Y' | 'MAX';
 export type ChartType = 'candle' | 'line';
 export type TrendTab = 'gainers' | 'losers' | 'active';
+
+// ─── AI Reasoning Types ─────────────────────
+export type SignalImpact = 'positive' | 'negative' | 'neutral';
+export type RiskLevel = 'low' | 'medium' | 'high';
+export type Recommendation = 'BUY' | 'SELL' | 'HOLD';
+
+export interface ReasoningSignal {
+  factor: string;
+  impact: SignalImpact;
+  explanation: string;
+  weight: number; // 0-1
+}
+
+export interface ReasoningResult {
+  summary: string;
+  recommendation: Recommendation;
+  signals: ReasoningSignal[];
+  confidence: number; // 0-100
+  risk_level: RiskLevel;
+  analysisTimestamp: string;
+}

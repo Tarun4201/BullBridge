@@ -5,9 +5,7 @@
 
 import { allStocks, stockPredictions, newsArticles, marketIndices, topGainers, topLosers, mostActive, generateCandleData } from '../constants/mockData';
 import { Stock, StockPredictions, NewsArticle, MarketIndex, StockQuote, CandleData } from '../types';
-
-// Base URL — FastApi server (Android Emulator Localhost)
-const API_BASE_URL = 'http://10.0.2.2:8000/api';
+import { API_BASE_URL, checkBackendHealth } from './apiHealth';
 
 // Simulated API delay for local fallback
 const simulateDelay = (ms: number = 300) => new Promise(resolve => setTimeout(resolve, ms));
@@ -24,28 +22,39 @@ export const StockAPI = {
 
   /** Get a single stock by ticker */
   async getByTicker(ticker: string): Promise<Stock | undefined> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/stocks/${ticker}`);
-      if (!res.ok) throw new Error('API Error');
-      return await res.json();
-    } catch {
+    const health = await checkBackendHealth();
+    if (health.status === 'ok') {
+      try {
+        const res = await fetch(`${API_BASE_URL}/stock/${ticker}`);
+        if (!res.ok) throw new Error('API Error');
+        return await res.json();
+      } catch (err) {
+        // Fallback on unexpected error despite health check passing
+        console.warn(`[Backend Down] Error during fetch, falling back to mock data for stock: ${ticker}`, err);
+      }
+    } else {
       console.warn(`[Backend Down] Falling back to mock data for stock: ${ticker}`);
-      await simulateDelay(150);
-      return allStocks.find(s => s.ticker === ticker);
     }
+    await simulateDelay(150);
+    return allStocks.find(s => s.ticker === ticker);
   },
 
   /** Search stocks by name or ticker using live backend proxy */
   async search(query: string): Promise<Stock[]> {
     if (!query) return [];
-    try {
-      const res = await fetch(`${API_BASE_URL}/stocks/search?q=${encodeURIComponent(query)}`);
-      if (res.ok) {
-        return await res.json();
+    
+    const health = await checkBackendHealth();
+    if (health.status === 'ok') {
+      try {
+        const res = await fetch(`${API_BASE_URL}/stocks/search?q=${encodeURIComponent(query)}`);
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch {
+        console.warn('[Backend Down] Search fallback to offline mock data');
       }
-    } catch {
-      console.warn('[Backend Down] Search fallback to offline mock data');
     }
+    
     await simulateDelay(100);
     const q = query.toLowerCase();
     return allStocks.filter(

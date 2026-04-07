@@ -4,7 +4,7 @@
  * SEBI compliant: BULLISH/BEARISH only, disclaimers on all prediction views
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Component, ErrorInfo, ReactNode } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Dimensions, ActivityIndicator,
@@ -19,12 +19,37 @@ import { useStockStore } from '../../stores/stockStore';
 import { useWatchlistStore } from '../../stores/watchlistStore';
 import { AIPrediction, TimeFrame, NewsArticle } from '../../types';
 import { TradingViewWidget } from '../../components/charts/TradingViewWidget';
+import { useReasoning } from '../../hooks/useReasoning';
+import { ReasoningPanel } from '../../components/reasoning/ReasoningPanel';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CHART_WIDTH = SCREEN_WIDTH - Spacing.xl * 2;
 const CHART_HEIGHT = 380;
 
 const TIME_FRAMES: TimeFrame[] = ['1D', '1W', '1M', '3M', '6M', '1Y', '5Y'];
+
+/**
+ * Error boundary that catches any crash from reasoning and renders nothing.
+ * This guarantees reasoning can NEVER take down the stock screen.
+ */
+class ReasoningErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.warn('[ReasoningErrorBoundary] Caught error:', error.message);
+  }
+  render() { return this.state.hasError ? null : this.props.children; }
+}
+
+/**
+ * Self-contained reasoning section. The useReasoning hook lives HERE,
+ * completely isolated from StockDetailScreen. If this component crashes,
+ * the error boundary catches it and the stock screen keeps working.
+ */
+function SafeReasoningSection() {
+  const { reasoning, isLoadingReasoning } = useReasoning();
+  return <ReasoningPanel reasoning={reasoning} isLoading={isLoadingReasoning} />;
+}
 
 export default function StockDetailScreen() {
   const { theme } = useTheme();
@@ -162,6 +187,11 @@ export default function StockDetailScreen() {
             <PredictionCard key={pred.model} prediction={pred} />
           ))}
         </View>
+
+        {/* AI Reasoning Panel — fully isolated, cannot crash stock screen */}
+        <ReasoningErrorBoundary>
+          <SafeReasoningSection />
+        </ReasoningErrorBoundary>
 
         {/* Pros & Cons */}
         {!isIndex && (currentStock.pros || currentStock.cons) && (
