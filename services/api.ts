@@ -11,42 +11,54 @@ const TRENDING_SYMBOLS = ['RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'IC
 
 // ─── Yahoo Finance Live API Layer ─────────────
 
-async function fetchYahooQuotes(tickers: string[]): Promise<Partial<Stock>[]> {
+// Free and open endpoint that does not require cookie crumb validation
+async function fetchYahooQuote(ticker: string): Promise<Partial<Stock> | null> {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+    const timer = setTimeout(() => controller.abort(), 4000);
     const res = await fetch(
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${tickers.map(t => encodeURIComponent(t)).join(',')}`,
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`,
       { signal: controller.signal }
     );
     clearTimeout(timer);
     
-    if (!res.ok) return [];
-    
+    if (!res.ok) return null;
     const json = await res.json();
-    const results = json?.quoteResponse?.result || [];
-    
-    return results.map((meta: any) => ({
+    const meta = json?.chart?.result?.[0]?.meta;
+    if (!meta) return null;
+
+    const price = meta.regularMarketPrice ?? meta.chartPreviousClose ?? 0;
+    const previousClose = meta.chartPreviousClose ?? meta.previousClose ?? 0;
+    const change = price - previousClose;
+    const changePercent = previousClose ? (change / previousClose * 100) : 0;
+
+    return {
       ticker: meta.symbol,
       name: meta.longName || meta.shortName || meta.symbol,
-      exchange: meta.exchange || 'NSE',
-      price: meta.regularMarketPrice ?? meta.previousClose ?? 0,
-      previousClose: meta.regularMarketPreviousClose ?? meta.previousClose ?? 0,
-      open: meta.regularMarketOpen ?? meta.regularMarketPrice ?? 0,
-      dayHigh: meta.regularMarketDayHigh ?? meta.regularMarketPrice ?? 0,
-      dayLow: meta.regularMarketDayLow ?? meta.regularMarketPrice ?? 0,
-      change: meta.regularMarketChange ?? 0,
-      changePercent: meta.regularMarketChangePercent ?? 0,
+      exchange: meta.exchangeName || 'NSE',
+      price: parseFloat(price.toFixed(2)),
+      previousClose: parseFloat(previousClose.toFixed(2)),
+      open: meta.regularMarketOpen ?? price,
+      dayHigh: meta.regularMarketDayHigh ?? price,
+      dayLow: meta.regularMarketDayLow ?? price,
+      change: parseFloat(change.toFixed(2)),
+      changePercent: parseFloat(changePercent.toFixed(2)),
       volume: meta.regularMarketVolume ?? 0,
-      marketCap: meta.marketCap ? `₹${(meta.marketCap / 10000000).toFixed(2)}Cr` : '-',
-      pe: meta.trailingPE ? parseFloat(meta.trailingPE.toFixed(2)) : 0,
-      dividendYield: meta.dividendYield ?? 0,
+      marketCap: '-',
+      pe: 0,
+      dividendYield: 0,
       low52Week: meta.fiftyTwoWeekLow ?? 0,
       high52Week: meta.fiftyTwoWeekHigh ?? 0,
-    }));
+    };
   } catch {
-    return [];
+    return null;
   }
+}
+
+async function fetchYahooQuotes(tickers: string[]): Promise<Partial<Stock>[]> {
+  const promises = tickers.map(t => fetchYahooQuote(t));
+  const results = await Promise.all(promises);
+  return results.filter(r => r !== null) as Partial<Stock>[];
 }
 
 /**
@@ -209,7 +221,23 @@ export const PredictionAPI = {
 export const NewsAPI = {
   /** Get latest market news */
   async getLatest(limit: number = 8): Promise<NewsArticle[]> {
-    return []; // To be replaced with live news API if available
+    try {
+      const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=India+Market&newsCount=${limit}`);
+      if (!res.ok) return [];
+      const json = await res.json();
+      return (json.news || []).map((n: any) => ({
+        id: n.uuid,
+        title: n.title,
+        source: n.publisher || 'Yahoo Finance',
+        timestamp: new Date((n.providerPublishTime || 0) * 1000).toISOString(),
+        url: n.link,
+        sentiment: 'neutral',
+        summary: '',
+        relatedTickers: n.relatedTickers || [],
+      }));
+    } catch {
+      return [];
+    }
   },
 
   /** Get news for a specific stock */
