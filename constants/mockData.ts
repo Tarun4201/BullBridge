@@ -20,6 +20,16 @@ export const allStocks: Stock[] = [
     dayHigh: 2892.10, dayLow: 2831.50, high52Week: 3217.60, low52Week: 2222.00,
     marketCap: '₹19.4L Cr', pe: 28.5, dividendYield: 0.37, previousClose: 2834.15,
     open: 2840.00, sector: 'Energy',
+    about: 'Reliance Industries Limited is an Indian multinational conglomerate company, headquartered in Mumbai. It has diverse businesses including energy, petrochemicals, natural gas, retail, telecommunications, mass media, and textiles.',
+    pros: ['Market leader in multiple sectors', 'Strong revenue growth across Jio and Retail', 'Massive scale and capital efficiency'],
+    cons: ['High capital expenditure', 'Dependence on refining margins', 'Regulatory risks in retail and telecom'],
+    peers: [{ticker: 'ONGC.NS', name: 'ONGC', marketCap: '₹3.5L Cr', price: 275.5, pe: 7.2}, {ticker: 'BHARTIARTL.NS', name: 'Bharti Airtel', marketCap: '₹9.8L Cr', price: 1678.9, pe: 74.5}],
+    financials: [
+      { year: '2022', revenue: 792756, profit: 67845 },
+      { year: '2023', revenue: 974864, profit: 73670 },
+      { year: '2024', revenue: 1000122, profit: 79020 }
+    ],
+    shareholding: { promoters: 50.3, fii: 22.1, dii: 16.4, public: 11.2 }
   },
   {
     ticker: 'TCS.NS', name: 'Tata Consultancy Services', exchange: 'NSE',
@@ -27,6 +37,16 @@ export const allStocks: Stock[] = [
     dayHigh: 3692.00, dayLow: 3641.80, high52Week: 4246.00, low52Week: 3320.00,
     marketCap: '₹13.2L Cr', pe: 31.2, dividendYield: 1.22, previousClose: 3682.95,
     open: 3680.00, sector: 'Tech',
+    about: 'Tata Consultancy Services is an Indian multinational information technology services and consulting company headquartered in Mumbai. It is a part of the Tata Group and operates in 150 locations across 46 countries.',
+    pros: ['Industry leading operating margins', 'Strong client relationships and low attrition', 'Diversified revenue base across geographies'],
+    cons: ['Dependence on US and European markets', 'Slowdown in discretionary IT spending', 'Wage inflation pressure'],
+    peers: [{ticker: 'INFY.NS', name: 'Infosys', marketCap: '₹6.3L Cr', price: 1534.6, pe: 26.4}, {ticker: 'WIPRO.NS', name: 'Wipro', marketCap: '₹2.4L Cr', price: 456.3, pe: 22.7}],
+    financials: [
+      { year: '2022', revenue: 191754, profit: 38327 },
+      { year: '2023', revenue: 225458, profit: 42147 },
+      { year: '2024', revenue: 240893, profit: 45908 }
+    ],
+    shareholding: { promoters: 72.3, fii: 12.5, dii: 10.1, public: 5.1 }
   },
   {
     ticker: 'HDFCBANK.NS', name: 'HDFC Bank', exchange: 'NSE',
@@ -34,6 +54,16 @@ export const allStocks: Stock[] = [
     dayHigh: 1658.40, dayLow: 1620.10, high52Week: 1880.00, low52Week: 1367.00,
     marketCap: '₹12.5L Cr', pe: 19.8, dividendYield: 1.15, previousClose: 1623.90,
     open: 1625.00, sector: 'Banking',
+    about: 'HDFC Bank Limited is an Indian banking and financial services company headquartered in Mumbai. It is India\'s largest private sector bank by assets and the world\'s tenth largest bank by market capitalization as of April 2024.',
+    pros: ['Consistent compounder with strong loan growth', 'Robust asset quality and low NPAs', 'Massive distribution network post-HDFC merger'],
+    cons: ['Merger integration challenges', 'NIM compression in the near term', 'Deposit mobilization pressure'],
+    peers: [{ticker: 'ICICIBANK.NS', name: 'ICICI Bank', marketCap: '₹7.7L Cr', price: 1098.3, pe: 17.6}, {ticker: 'AXISBANK.NS', name: 'Axis Bank', marketCap: '₹3.5L Cr', price: 1124.7, pe: 14.2}],
+    financials: [
+      { year: '2022', revenue: 157263, profit: 36961 },
+      { year: '2023', revenue: 192800, profit: 45997 },
+      { year: '2024', revenue: 254100, profit: 60810 }
+    ],
+    shareholding: { promoters: 0, fii: 52.3, dii: 30.6, public: 17.1 }
   },
   {
     ticker: 'INFY.NS', name: 'Infosys', exchange: 'NSE',

@@ -13,6 +13,45 @@ const simulateDelay = (ms: number = 300) => new Promise(resolve => setTimeout(re
 /**
  * Stock API
  */
+// ─── Yahoo Finance Real-Time Price Layer ─────
+// Gets live quote and patches it onto mock stock data so stats match chart.
+const _priceCache: Record<string, { data: Partial<Stock>; ts: number }> = {};
+const PRICE_CACHE_TTL_MS = 60_000; // 1-minute cache
+
+async function fetchYahooQuote(ticker: string): Promise<Partial<Stock> | null> {
+  const now = Date.now();
+  if (_priceCache[ticker] && (now - _priceCache[ticker].ts) < PRICE_CACHE_TTL_MS) {
+    return _priceCache[ticker].data;
+  }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const meta = json?.chart?.result?.[0]?.meta;
+    if (!meta) return null;
+    const live: Partial<Stock> = {
+      price: meta.regularMarketPrice ?? meta.previousClose,
+      previousClose: meta.chartPreviousClose ?? meta.previousClose,
+      open: meta.regularMarketOpen ?? meta.regularMarketPrice,
+      dayHigh: meta.regularMarketDayHigh ?? meta.regularMarketPrice,
+      dayLow: meta.regularMarketDayLow ?? meta.regularMarketPrice,
+      change: (meta.regularMarketPrice ?? 0) - (meta.chartPreviousClose ?? meta.previousClose ?? 0),
+      changePercent: meta.regularMarketChangePercent ?? 0,
+      volume: meta.regularMarketVolume ?? 0,
+    };
+    _priceCache[ticker] = { data: live, ts: now };
+    return live;
+  } catch {
+    return null;
+  }
+}
+
 export const StockAPI = {
   /** Get all available stocks */
   async getAll(): Promise<Stock[]> {
@@ -20,7 +59,7 @@ export const StockAPI = {
     return allStocks;
   },
 
-  /** Get a single stock by ticker */
+  /** Get a single stock by ticker — patches live Yahoo price onto mock data */
   async getByTicker(ticker: string): Promise<Stock | undefined> {
     const health = await checkBackendHealth();
     if (health.status === 'ok') {
@@ -29,14 +68,20 @@ export const StockAPI = {
         if (!res.ok) throw new Error('API Error');
         return await res.json();
       } catch (err) {
-        // Fallback on unexpected error despite health check passing
-        console.warn(`[Backend Down] Error during fetch, falling back to mock data for stock: ${ticker}`, err);
+        console.warn(`[Backend Down] Falling back to Yahoo + mock for: ${ticker}`, err);
       }
-    } else {
-      console.warn(`[Backend Down] Falling back to mock data for stock: ${ticker}`);
     }
-    await simulateDelay(150);
-    return allStocks.find(s => s.ticker === ticker);
+
+    // Base mock stock
+    const mockStock = allStocks.find(s => s.ticker === ticker);
+    if (!mockStock) return undefined;
+
+    // Patch with live Yahoo Finance prices for accuracy
+    const liveQuote = await fetchYahooQuote(ticker);
+    if (liveQuote) {
+      return { ...mockStock, ...liveQuote };
+    }
+    return mockStock;
   },
 
   /** Search stocks by name or ticker using live backend proxy */
