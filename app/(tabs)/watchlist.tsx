@@ -3,25 +3,49 @@
  * User's saved stocks with live price data
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, FlatList,
+  View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect, useIsFocused } from 'expo-router';
 import { ThemeColors, getGradients } from '../../constants/colors';
 import { useTheme } from '../../theme/ThemeProvider';
 import { Typography, Spacing, BorderRadius } from '../../constants/theme';
 import { useWatchlistStore } from '../../stores/watchlistStore';
+import { StockAPI } from '../../services/api';
 import { Stock } from '../../types';
 
 export default function WatchlistScreen() {
   const { theme } = useTheme();
   const styles = getStyles(theme);
   const Gradients = getGradients(theme);
-  const { getWatchlistStocks, removeFromWatchlist, watchlistTickers } = useWatchlistStore();
-  const watchlistStocks = getWatchlistStocks();
+  const { removeFromWatchlist, watchlistTickers } = useWatchlistStore();
+  const [watchlistStocks, setWatchlistStocks] = useState<Stock[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const isFocused = useIsFocused();
+
+  useEffect(() => {
+    async function loadWatchlist() {
+      setIsLoading(true);
+      if (watchlistTickers.length > 0) {
+        // Fetch real data from Yahoo Finance for every ticker in the user's watchlist
+        const results = await Promise.all(
+          watchlistTickers.map((t) => StockAPI.getByTicker(t))
+        );
+        setWatchlistStocks(results.filter((res) => res !== undefined) as Stock[]);
+      } else {
+        setWatchlistStocks([]);
+      }
+      setIsLoading(false);
+    }
+    
+    // Refresh when screen is focused or tickers change
+    if (isFocused) {
+      loadWatchlist();
+    }
+  }, [watchlistTickers, isFocused]);
 
   const renderStock = ({ item }: { item: Stock }) => {
     const isPositive = item.change >= 0;
@@ -69,7 +93,12 @@ export default function WatchlistScreen() {
         </View>
       </View>
 
-      {watchlistStocks.length > 0 ? (
+      {isLoading ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.emptySubtitle, { marginTop: Spacing.md }]}>Loading live ticks...</Text>
+        </View>
+      ) : watchlistStocks.length > 0 ? (
         <FlatList
           data={watchlistStocks}
           renderItem={renderStock}
