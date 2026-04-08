@@ -32,12 +32,13 @@ export default function TabLayout() {
         tabBarActiveTintColor: theme.tabActive,
         tabBarInactiveTintColor: theme.tabInactive,
         tabBarLabelStyle: styles.tabLabel,
+        tabBarItemStyle: styles.tabItem,
         tabBarIcon: ({ focused, color }) => {
           const icons = TAB_ICONS[route.name] || TAB_ICONS.index;
           const iconName = focused ? icons.active : icons.inactive;
           return (
             <View style={focused ? styles.activeIconContainer : undefined}>
-              <Ionicons name={iconName as any} size={22} color={color} />
+              <Ionicons name={iconName as any} size={20} color={color} />
               {focused && <View style={[styles.activeIndicator, { backgroundColor: theme.tabActive }]} />}
             </View>
           );
@@ -47,7 +48,7 @@ export default function TabLayout() {
       <Tabs.Screen name="index" options={{ title: 'Home' }} />
       <Tabs.Screen name="search" options={{ title: 'Search' }} />
       <Tabs.Screen name="watchlist" options={{ title: 'Watchlist' }} />
-      <Tabs.Screen name="notifications" options={{ title: 'Alerts' }} />
+      <Tabs.Screen name="notifications" options={{ title: 'Notifications' }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
     </Tabs>
   );
@@ -59,10 +60,18 @@ function getStyles(theme: ThemeColors) {
     backgroundColor: theme.tabBarBackground,
     borderTopWidth: 1,
     borderTopColor: theme.tabBarBorder,
-    height: Platform.OS === 'ios' ? 88 : 64,
+    height: Platform.OS === 'ios' ? 92 : 70, 
     paddingBottom: Platform.OS === 'ios' ? 24 : 8,
     paddingTop: 8,
     elevation: 0,
+    width: '100%',
+    flexDirection: 'row',
+  },
+  tabItem: {
+    flex: 1,
+    minWidth: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tabLabel: {
     fontSize: Typography.xs,

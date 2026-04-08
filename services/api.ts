@@ -6,15 +6,84 @@
 import { Stock, MarketIndex, StockQuote, NewsArticle, StockPredictions, CandleData } from '../types';
 import { API_BASE_URL, checkBackendHealth } from './apiHealth';
 import { NIFTY_500_SYMBOLS } from '../constants/nseSymbols';
+import { MOCK_INDICES } from '../constants/mockMarketData';
 
-// ─── Yahoo Finance v8 Chart — Single Quote Fetch ────────────────────────────
-// This is the ONLY free, open Yahoo Finance endpoint that returns live prices.
+/**
+ * Stable Fallback Fetcher — Ensures data loads even if v7 is blocked
+ */
 async function fetchYahooQuote(ticker: string): Promise<Partial<Stock> | null> {
+  // Try v8 first for indices (much more stable for benchmarks)
+  if (ticker.startsWith('^')) {
+    return fetchYahooQuoteV8(ticker);
+  }
+
+  // Try v7 first for regular stocks (Detailed Fundamentals)
+  const detailed = await fetchYahooQuoteV7(ticker);
+  if (detailed) return detailed;
+
+  // Fallback to v8 (Basic Chart Data)
+  return fetchYahooQuoteV8(ticker);
+}
+
+/**
+ * Yahoo Finance v7 Quote — Returns price + fundamentals
+ */
+async function fetchYahooQuoteV7(ticker: string): Promise<Partial<Stock> | null> {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+    const timer = setTimeout(() => controller.abort(), 4000);
     const res = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`,
+      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(ticker)}`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const json = await res.json();
+    const result = json?.quoteResponse?.result?.[0];
+    if (!result) return null;
+
+    const price = result.regularMarketPrice ?? 0;
+    const formatCap = (val: number) => {
+      if (!val) return '-';
+      if (val >= 1e12) return (val / 1e12).toFixed(2) + 'T';
+      if (val >= 1e9) return (val / 1e9).toFixed(2) + 'B';
+      return (val / 1e7).toFixed(2) + ' Cr';
+    };
+
+    return {
+      ticker: result.symbol,
+      name: result.longName || result.shortName || result.symbol,
+      exchange: result.fullExchangeName || result.exchange || 'NSE',
+      price: parseFloat(price.toFixed(2)),
+      previousClose: parseFloat((result.regularMarketPreviousClose ?? 0).toFixed(2)),
+      open: parseFloat((result.regularMarketOpen ?? price).toFixed(2)),
+      dayHigh: parseFloat((result.regularMarketDayHigh ?? price).toFixed(2)),
+      dayLow: parseFloat((result.regularMarketDayLow ?? price).toFixed(2)),
+      change: parseFloat((result.regularMarketChange ?? 0).toFixed(2)),
+      changePercent: parseFloat((result.regularMarketChangePercent ?? 0).toFixed(2)),
+      volume: result.regularMarketVolume ?? 0,
+      marketCap: formatCap(result.marketCap),
+      pe: parseFloat((result.trailingPE || 0).toFixed(2)),
+      pb: parseFloat((result.priceToBook || 0).toFixed(2)),
+      eps: parseFloat((result.epsTrailingTwelveMonths || 0).toFixed(2)),
+      dividendYield: parseFloat((result.dividendYield || 0).toFixed(2)),
+      low52Week: result.fiftyTwoWeekLow ?? 0,
+      high52Week: result.fiftyTwoWeekHigh ?? 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Yahoo Finance v8 Chart — Basic price data (Highest reliability)
+ */
+async function fetchYahooQuoteV8(ticker: string): Promise<Partial<Stock> | null> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(
+      `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`,
       { signal: controller.signal }
     );
     clearTimeout(timer);
@@ -51,38 +120,186 @@ async function fetchYahooQuote(ticker: string): Promise<Partial<Stock> | null> {
   }
 }
 
+/**
+ * NEW: Yahoo Finance Screener Fetcher
+ * Analyzes ALL 3000+ stocks for the region and returns top movers instantly.
+ */
+async function fetchMarketScreener(scrId: 'day_gainers' | 'day_losers' | 'most_actives'): Promise<Partial<Stock>[]> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(
+      `https://query2.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&scrIds=${scrId}&region=IN`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timer);
+    if (!res.ok) return [];
+
+    const json = await res.json();
+    const quotes = json?.finance?.result?.[0]?.quotes || [];
+    
+    // STRICT INDIAN FILTER: Only include stocks listed on NSE (.NS) or BSE (.BO)
+    return quotes
+      .filter((q: any) => q.symbol && (q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO')))
+      .map((result: any) => ({
+        ticker: result.symbol,
+        name: result.longName || result.shortName || result.symbol,
+        exchange: result.fullExchangeName || result.exchange || 'NSE',
+        price: parseFloat((result.regularMarketPrice ?? 0).toFixed(2)),
+        change: parseFloat((result.regularMarketChange ?? 0).toFixed(2)),
+        changePercent: parseFloat((result.regularMarketChangePercent ?? 0).toFixed(2)),
+        volume: result.regularMarketVolume ?? 0,
+      } as Partial<Stock>));
+  } catch (e) {
+    console.warn(`[API] Screener ${scrId} failed:`, e);
+    return [];
+  }
+}
+
+/**
+ * Bulk Yahoo Finance Fetcher — Used for manually tracked lists (Nifty 100)
+ */
+async function fetchYahooQuotesBulk(tickers: string[]): Promise<Partial<Stock>[]> {
+  if (tickers.length === 0) return [];
+  
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000); // 8s timeout for the whole batch
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${tickers.map(encodeURIComponent).join(',')}`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timer);
+    if (!res.ok) return [];
+
+    const json = await res.json();
+    const results = json?.quoteResponse?.result || [];
+    
+    return results.map((result: any) => {
+      const price = result.regularMarketPrice ?? 0;
+      const formatCap = (val: number) => {
+        if (!val) return '-';
+        if (val >= 1e12) return (val / 1e12).toFixed(2) + 'T';
+        if (val >= 1e9) return (val / 1e9).toFixed(2) + 'B';
+        return (val / 1e7).toFixed(2) + ' Cr';
+      };
+
+      return {
+        ticker: result.symbol,
+        name: result.longName || result.shortName || result.symbol,
+        exchange: result.fullExchangeName || result.exchange || 'NSE',
+        price: parseFloat(price.toFixed(2)),
+        previousClose: parseFloat((result.regularMarketPreviousClose ?? 0).toFixed(2)),
+        open: parseFloat((result.regularMarketOpen ?? price).toFixed(2)),
+        dayHigh: parseFloat((result.regularMarketDayHigh ?? price).toFixed(2)),
+        dayLow: parseFloat((result.regularMarketDayLow ?? price).toFixed(2)),
+        change: parseFloat((result.regularMarketChange ?? 0).toFixed(2)),
+        changePercent: parseFloat((result.regularMarketChangePercent ?? 0).toFixed(2)),
+        volume: result.regularMarketVolume ?? 0,
+        marketCap: formatCap(result.marketCap),
+        pe: parseFloat((result.trailingPE || 0).toFixed(2)),
+        pb: parseFloat((result.priceToBook || 0).toFixed(2)),
+        eps: parseFloat((result.epsTrailingTwelveMonths || 0).toFixed(2)),
+        dividendYield: parseFloat((result.dividendYield || 0).toFixed(2)),
+        low52Week: result.fiftyTwoWeekLow ?? 0,
+        high52Week: result.fiftyTwoWeekHigh ?? 0,
+      } as Partial<Stock>;
+    });
+  } catch {
+    return [];
+  }
+}
+
 // ─── Batch Fetcher — concurrent requests in BATCH_SIZE chunks ────────────────
-const BATCH_SIZE = 30;
+const BATCH_SIZE = 10; // Micro-batches to bypass stealth blocks (429)
+const INTER_BATCH_DELAY = 150; // ms
 
 async function fetchYahooQuotesBatch(tickers: string[]): Promise<Partial<Stock>[]> {
   const results: Partial<Stock>[] = [];
-  for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
-    const batch = tickers.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(batch.map(t => fetchYahooQuote(t)));
-    for (const r of batchResults) {
-      if (r !== null) results.push(r);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s total safety for full batch
+
+  try {
+    for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
+      if (controller.signal.aborted) break;
+      const batch = tickers.slice(i, i + BATCH_SIZE);
+      const batchResults = await fetchYahooQuotesBulk(batch);
+      for (const r of batchResults) {
+        if (r && r.ticker) results.push(r);
+      }
+      // Anti-429 Delay
+      if (i + BATCH_SIZE < tickers.length) {
+        await new Promise(resolve => setTimeout(resolve, INTER_BATCH_DELAY));
+      }
     }
+  } catch (e) {
+    console.warn('[API] Bulk fetch partially interrupted:', e);
+  } finally {
+    clearTimeout(timeoutId);
   }
   return results;
 }
 
-// Single-ticker version (used in detail page)
+// Single-ticker version with anti-block staggering
 async function fetchYahooQuotes(tickers: string[]): Promise<Partial<Stock>[]> {
-  const results = await Promise.all(tickers.map(t => fetchYahooQuote(t)));
-  return results.filter(r => r !== null) as Partial<Stock>[];
+  const results: Partial<Stock>[] = [];
+  for (const ticker of tickers) {
+    const res = await fetchYahooQuote(ticker);
+    if (res) results.push(res);
+    // 100ms stagger to avoid 'burst' traffic blocks (429)
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  return results;
 }
 
-// ─── In-memory cache for Nifty 500 batch data (60s TTL) ─────────────────────
-let _niftyCache: { data: Partial<Stock>[]; ts: number } | null = null;
-const NIFTY_CACHE_TTL = 60_000;
+let cachedMarketQuotes: Partial<Stock>[] = [];
+let lastMarketFetchTime = 0;
+const CACHE_DURATION = 60000; // 60 seconds
 
-async function getNiftyQuotes(): Promise<Partial<Stock>[]> {
-  if (_niftyCache && Date.now() - _niftyCache.ts < NIFTY_CACHE_TTL) {
-    return _niftyCache.data;
+/**
+ * Optimized Market Snapshot — Queries top 100 symbols
+ * Shared between Gainers, Losers, and Active sections.
+ */
+async function getTopMarketQuotes(): Promise<Partial<Stock>[]> {
+  const now = Date.now();
+  if (cachedMarketQuotes.length > 0 && (now - lastMarketFetchTime) < CACHE_DURATION) {
+    return cachedMarketQuotes;
   }
-  const data = await fetchYahooQuotesBatch(NIFTY_500_SYMBOLS);
-  _niftyCache = { data, ts: Date.now() };
-  return data;
+
+  // Smart Trio discovery: Mega (Top 40), Mid (Middle 30), Small (Bottom 30)
+  const symbols = Array.from(new Set([
+    ...NIFTY_500_SYMBOLS.slice(0, 40),
+    ...NIFTY_500_SYMBOLS.slice(200, 230),
+    ...NIFTY_500_SYMBOLS.slice(450, 480)
+  ]));
+
+  try {
+    const results = await fetchYahooQuotesBatch(symbols);
+    
+    // Recovery Mode: Smart Spread Discovery (Diverse 20-stock pack)
+    if (results.length === 0) {
+      console.warn('[API] Bulk fetch blocked. Triggering Smart Spread Recovery...');
+      const recoveryPool = [
+        ...NIFTY_500_SYMBOLS.slice(0, 10),      // Top Large Caps
+        ...NIFTY_500_SYMBOLS.slice(150, 160),   // Diversified sector
+      ];
+      const recoveryResults = await fetchYahooQuotes(recoveryPool);
+      if (recoveryResults.length > 0) {
+        cachedMarketQuotes = recoveryResults;
+        lastMarketFetchTime = now;
+        return recoveryResults;
+      }
+    }
+
+    if (results.length > 0) {
+      cachedMarketQuotes = results;
+      lastMarketFetchTime = now;
+    }
+    return results;
+  } catch (error) {
+    console.error('[API] Failed to fetch market snapshot:', error);
+    return cachedMarketQuotes;
+  }
 }
 
 /**
@@ -112,7 +329,7 @@ export const StockAPI = {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(
-        `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=25&newsCount=0&enableFuzzyQuery=false`,
+        `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=25&newsCount=0&enableFuzzyQuery=false&region=IN&lang=en-IN`,
         { signal: controller.signal }
       );
       clearTimeout(timer);
@@ -121,12 +338,11 @@ export const StockAPI = {
       const json = await res.json();
       const quotes: any[] = json?.quotes || [];
 
-      // Filter for NSE/BSE equities only
+      // STRICT INDIAN FILTER: NSE (.NS) or BSE (.BO) only.
       return quotes
         .filter(q =>
           q.quoteType === 'EQUITY' &&
-          (q.exchange === 'NSI' || q.exchange === 'BSE' || q.exchange === 'BOM' ||
-           (q.symbol && (q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO'))))
+          (q.symbol && (q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO')))
         )
         .map(q => ({
           ticker: q.symbol,
@@ -145,11 +361,14 @@ export const StockAPI = {
   /** Get OHLCV candle data for a ticker */
   async getCandleData(ticker: string, days: number = 90): Promise<CandleData[]> {
     try {
-      const range = days <= 5 ? '5d' : days <= 30 ? '1mo' : days <= 90 ? '3mo' : days <= 180 ? '6mo' : '1y';
-      const interval = days <= 5 ? '15m' : '1d';
+      // Benchmarks (^NSEI, etc.) often fail on small intraday ranges. 
+      // Force stable parameters for indices.
+      const isIndex = ticker.startsWith('^');
+      const range = isIndex ? '1mo' : (days <= 5 ? '5d' : days <= 30 ? '1mo' : days <= 90 ? '3mo' : '1y');
+      const interval = isIndex ? '1d' : (days <= 5 ? '15m' : '1d');
 
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 6000);
+      const timer = setTimeout(() => controller.abort(), 8000); // 8s timeout for charts
       const res = await fetch(
         `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${range}&interval=${interval}`,
         { signal: controller.signal }
@@ -166,19 +385,20 @@ export const StockAPI = {
       const candles: CandleData[] = [];
 
       for (let i = 0; i < timestamps.length; i++) {
-        if (quote.open?.[i] != null && quote.close?.[i] != null) {
+        if (quote.close?.[i] != null) {
           candles.push({
             date: new Date(timestamps[i] * 1000).toISOString().split('T')[0],
-            open: parseFloat(quote.open[i].toFixed(2)),
-            high: parseFloat(quote.high[i].toFixed(2)),
-            low: parseFloat(quote.low[i].toFixed(2)),
+            open: parseFloat((quote.open?.[i] || quote.close?.[i]).toFixed(2)),
+            high: parseFloat((quote.high?.[i] || quote.close?.[i]).toFixed(2)),
+            low: parseFloat((quote.low?.[i] || quote.close?.[i]).toFixed(2)),
             close: parseFloat(quote.close[i].toFixed(2)),
             volume: quote.volume?.[i] || 0,
           });
         }
       }
       return candles;
-    } catch {
+    } catch (e) {
+      console.warn(`[API] Candle fetch failed for ${ticker}`, e);
       return [];
     }
   },
@@ -190,45 +410,76 @@ export const StockAPI = {
 export const MarketAPI = {
   /** Live NSE/BSE indices */
   async getIndices(): Promise<MarketIndex[]> {
-    const quotes = await fetchYahooQuotes(['^NSEI', '^BSESN', '^NSEBANK']);
-    return quotes.map(q => ({
-      name: q.ticker === '^NSEI' ? 'NIFTY 50' : q.ticker === '^BSESN' ? 'SENSEX' : 'NIFTY Bank',
-      ticker: q.ticker || '',
-      value: q.price || 0,
-      change: q.change || 0,
-      changePercent: q.changePercent || 0,
-    }));
+    const targets = [
+      { ticker: '^NSEI', name: 'NIFTY 50' },
+      { ticker: '^BSESN', name: 'SENSEX' },
+      { ticker: '^NSEBANK', name: 'NIFTY Bank' },
+    ];
+
+    const results = await Promise.all(
+      targets.map(async (target) => {
+        try {
+          const quote = await fetchYahooQuote(target.ticker);
+          if (quote) {
+            return {
+              name: target.name,
+              ticker: target.ticker,
+              value: quote.price || 0,
+              change: quote.change || 0,
+              changePercent: quote.changePercent || 0,
+            };
+          }
+        } catch (e) {
+          console.warn(`[MarketAPI] Failed live fetch for ${target.ticker}`, e);
+        }
+        
+        // Fallback to mock for this specific slot if live fetch fails
+        const mock = MOCK_INDICES.find(m => m.ticker === target.ticker);
+        return mock || { name: target.name, ticker: target.ticker, value: 0, change: 0, changePercent: 0 };
+      })
+    );
+
+    return results;
   },
 
   /**
-   * Top 10 Gainers — computed from live Nifty 500 quotes.
-   * Fetches all 500 symbols in batches and returns top 10 by % change.
+   * Top 10 Gainers — Professional Screener (analyzes 3000+ stocks)
    */
   async getTopGainers(): Promise<StockQuote[]> {
-    const quotes = await getNiftyQuotes();
-    return quotes
-      .filter(q => (q.changePercent ?? 0) > 0)
+    const results = await fetchMarketScreener('day_gainers');
+    if (results.length > 0) return results.slice(0, 10) as StockQuote[];
+    
+    // Fallback to manual Nifty 100 snapshot
+    const quotes = await getTopMarketQuotes();
+    return [...quotes]
+      .filter(q => (q.changePercent ?? 0) >= 0)
       .sort((a, b) => (b.changePercent ?? 0) - (a.changePercent ?? 0))
       .slice(0, 10) as StockQuote[];
   },
 
   /**
-   * Top 10 Losers — computed from live Nifty 500 quotes.
+   * Top 10 Losers — Professional Screener (analyzes 3000+ stocks)
    */
   async getTopLosers(): Promise<StockQuote[]> {
-    const quotes = await getNiftyQuotes();
-    return quotes
-      .filter(q => (q.changePercent ?? 0) < 0)
+    const results = await fetchMarketScreener('day_losers');
+    if (results.length > 0) return results.slice(0, 10) as StockQuote[];
+
+    const quotes = await getTopMarketQuotes();
+    return [...quotes]
+      .filter(q => (q.changePercent ?? 0) <= 0)
       .sort((a, b) => (a.changePercent ?? 0) - (b.changePercent ?? 0))
       .slice(0, 10) as StockQuote[];
   },
 
   /**
-   * Top 10 Most Active by volume from Nifty 500.
+   * Top 10 Active — Professional Screener (analyzes 3000+ stocks)
    */
   async getMostActive(): Promise<StockQuote[]> {
-    const quotes = await getNiftyQuotes();
-    return quotes
+    const results = await fetchMarketScreener('most_actives');
+    if (results.length > 0) return results.slice(0, 10) as StockQuote[];
+
+    const quotes = await getTopMarketQuotes();
+    return [...quotes]
       .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 10) as StockQuote[];
   },
@@ -260,15 +511,16 @@ export const PredictionAPI = {
  * News API
  */
 export const NewsAPI = {
-  /** Latest Indian market news from Yahoo Finance search */
+  /** Latest Indian market news from Yahoo Finance search with strict filtering */
   async getLatest(limit: number = 10): Promise<NewsArticle[]> {
     try {
       const res = await fetch(
-        `https://query2.finance.yahoo.com/v1/finance/search?q=NSE+BSE+India+Stock+Market&newsCount=${limit}&quotesCount=0`
+        `https://query2.finance.yahoo.com/v1/finance/search?q=Indian+Stock+Market+NSE+BSE+Nifty+Sensex+Equity&newsCount=30&quotesCount=0`
       );
       if (!res.ok) return [];
       const json = await res.json();
-      return (json.news || []).map((n: any) => ({
+      
+      const ALL_INDIA_NEWS = (json.news || []).map((n: any) => ({
         id: n.uuid,
         title: n.title,
         source: n.publisher || 'Yahoo Finance',
@@ -278,6 +530,19 @@ export const NewsAPI = {
         summary: '',
         relatedTickers: n.relatedTickers || [],
       }));
+
+      // Extreme filter for Indian market relevance
+      const indianKeywords = [
+        'india', 'nse', 'bse', 'nifty', 'sensex', 'bank nifty', 'rupee', 
+        'stock market india', 'infy', 'reliance', 'tata', 'hdfc', 'sbi'
+      ];
+      const filtered = ALL_INDIA_NEWS.filter((article: any) => {
+        const title = article.title.toLowerCase();
+        // Priority to headlines actually mentioning India or NSE/BSE
+        return indianKeywords.some(kw => title.includes(kw));
+      });
+
+      return filtered.slice(0, limit);
     } catch {
       return [];
     }

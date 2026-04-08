@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, TouchableOpacity, Text, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { Ionicons } from '@expo/vector-icons';
 import { ThemeColors } from '../../constants/colors';
 import { useTheme } from '../../theme/ThemeProvider';
 
@@ -8,17 +9,19 @@ interface TradingViewWidgetProps {
   ticker: string;
   width?: number | string;
   height?: number | string;
+  showExternalLink?: boolean;
 }
 
-export function TradingViewWidget({ ticker, width = '100%', height = 300 }: TradingViewWidgetProps) {
+export function TradingViewWidget({ ticker, width = '100%', height = 300, showExternalLink = true }: TradingViewWidgetProps) {
   const { theme, isDark } = useTheme();
+  const styles = getStyles(theme);
   
   // Format ticker for Indian exchanges. If it doesn't already have an exchange prefix,
   // we default to BSE (TradingView format: BSE:RELIANCE or NSE:RELIANCE).
   const symbol = useMemo(() => {
-    if (ticker === '^NSEI' || ticker === 'NSEI') return 'NSE:NIFTY1!';
-    if (ticker === '^BSESN' || ticker === 'BSESN') return 'BSE:SENSEX';
-    if (ticker === '^NSEBANK' || ticker === 'NSEBANK') return 'NSE:BANKNIFTY1!';
+    if (ticker === '^NSEI' || ticker === 'NSEI' || ticker === 'NIFTY 50' || ticker === 'NIFTY') return 'NSE:NIFTY1!';
+    if (ticker === '^BSESN' || ticker === 'BSESN' || ticker === 'SENSEX') return 'BSE:SENSEX';
+    if (ticker === '^NSEBANK' || ticker === 'NSEBANK' || ticker === 'BANK NIFTY' || ticker === 'NIFTY BANK' || ticker === 'BANK') return 'NSE:BANKNIFTY1!';
 
     let cleanTicker = ticker.replace('.NS', '').replace('.BO', '');
     if (!cleanTicker.includes(':')) {
@@ -68,6 +71,7 @@ export function TradingViewWidget({ ticker, width = '100%', height = 300 }: Trad
   return (
     <View style={[{ overflow: 'hidden', borderRadius: 12, backgroundColor: theme.background }, { width: width as any, height: height as any }]}>
       <WebView
+        key={symbol} // Force re-render when ticker changes
         source={{ html: htmlContent, baseUrl: 'https://www.tradingview.com' }}
         style={{ flex: 1, backgroundColor: theme.background }}
         scrollEnabled={false}
@@ -81,7 +85,61 @@ export function TradingViewWidget({ ticker, width = '100%', height = 300 }: Trad
           </View>
         )}
       />
+      
+      {showExternalLink && (
+        <TouchableOpacity 
+          style={styles.externalLink}
+          onPress={() => Linking.openURL(`https://in.tradingview.com/chart/?symbol=${symbol}`)}
+        >
+          <Ionicons name="open-outline" size={14} color={theme.primary} />
+          <Text style={styles.externalLinkText}>Open Full Chart</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
+}
+
+const styles = (theme: ThemeColors) => StyleSheet.create({
+  externalLink: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  externalLinkText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+  }
+});
+function getStyles(theme: ThemeColors) {
+  return StyleSheet.create({
+    externalLink: {
+      position: 'absolute',
+      bottom: 8,
+      right: 8,
+      backgroundColor: theme.surface,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 6,
+      gap: 4,
+      borderWidth: 1,
+      borderColor: theme.border,
+      zIndex: 10,
+    },
+    externalLinkText: {
+      color: theme.primary,
+      fontSize: 10,
+      fontWeight: 'bold',
+    }
+  });
 }
 

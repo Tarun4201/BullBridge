@@ -1,11 +1,12 @@
 /**
  * Bull Bridge — Profile Screen
- * User profile, settings, data source disclosures, and logout
+ * User profile, settings, experience level selector, sector interests
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
+  Modal, FlatList, Pressable, TextInput, Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +15,8 @@ import { ThemeColors, getGradients } from '../../constants/colors';
 import { useTheme } from '../../theme/ThemeProvider';
 import { Typography, Spacing, BorderRadius } from '../../constants/theme';
 import { useAuthStore } from '../../stores/authStore';
+import { ExperienceLevel } from '../../types';
+import { PermissionHandler } from '../../utils/permissionHandler';
 
 interface MenuItem {
   icon: string;
@@ -23,26 +26,47 @@ interface MenuItem {
   onPress: () => void;
 }
 
-
+const EXPERIENCE_LEVELS: ExperienceLevel[] = ['Beginner', 'Intermediate', 'Advanced'];
+const ALL_SECTORS = ['IT & Tech', 'Banking', 'Auto', 'Energy', 'Pharma', 'FMCG', 'Metals', 'Real Estate'];
 
 export default function ProfileScreen() {
   const { theme, isDark, toggleTheme } = useTheme();
   const styles = getStyles(theme);
   const Gradients = getGradients(theme);
-  const { user, logout } = useAuthStore();
+  const { user, logout, updateProfile } = useAuthStore();
+  
+  const [showLevelModal, setShowLevelModal] = useState(false);
+  const [showSectorModal, setShowSectorModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   const handleLogout = () => {
     logout();
     router.replace('/(auth)/login');
   };
 
+  const showSecurityAlert = () => {
+    Alert.alert(
+      'Security Information',
+      'This app is for educational purposes only. Market data and AI predictions are not financial advice.',
+      [{ text: 'I Understand' }]
+    );
+  };
+
   const menuSections: { title: string; items: MenuItem[] }[] = [
     {
       title: 'Account',
       items: [
-        { icon: 'person-outline', label: 'Edit Profile', color: theme.primary, onPress: () => {} },
-        { icon: 'shield-checkmark-outline', label: 'Security', color: theme.bullish, onPress: () => {} },
-        { icon: 'notifications-outline', label: 'Notification Preferences', color: theme.warning, onPress: () => {} },
+        { icon: 'school-outline', label: 'Experience Level', color: theme.primary, trailing: user?.experienceLevel, onPress: () => setShowLevelModal(true) },
+        { icon: 'cube-outline', label: 'Sector Interests', color: theme.bullish, trailing: `${user?.sectors?.length || 0} selected`, onPress: () => setShowSectorModal(true) },
+        { 
+          icon: 'notifications-outline', 
+          label: 'Notification Access', 
+          color: theme.warning, 
+          onPress: async () => {
+             const granted = await PermissionHandler.requestNotificationPermission();
+             if (granted) alert('Notification access granted!');
+          } 
+        },
       ],
     },
     {
@@ -56,21 +80,25 @@ export default function ProfileScreen() {
           onPress: toggleTheme 
         },
         { icon: 'language-outline', label: 'Language', color: theme.info, trailing: 'English', onPress: () => {} },
-        { icon: 'analytics-outline', label: 'Default Chart Type', color: theme.primary, trailing: 'Candle', onPress: () => {} },
       ],
     },
     {
-      title: 'Legal',
+      title: 'Support & Legal',
       items: [
-        { icon: 'document-text-outline', label: 'Privacy Policy', color: theme.textSecondary, onPress: () => {} },
-        { icon: 'information-circle-outline', label: 'Terms of Service', color: theme.textSecondary, onPress: () => {} },
-        { icon: 'shield-outline', label: 'SEBI Disclaimer', color: theme.warning, onPress: () => {} },
+        { icon: 'shield-checkmark-outline', label: 'Security', color: theme.primary, onPress: showSecurityAlert },
+        { icon: 'document-text-outline', label: 'Privacy Policy', color: theme.textSecondary, onPress: () => router.push('/legal/privacy') },
+        { icon: 'information-circle-outline', label: 'Terms of Service', color: theme.textSecondary, onPress: () => router.push('/legal/terms') },
+        { icon: 'shield-outline', label: 'SEBI Disclaimer', color: theme.warning, onPress: () => router.push('/legal/disclaimer') },
       ],
     },
   ];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <View style={styles.container}>
+      <ScrollView 
+        contentContainerStyle={styles.content} 
+        showsVerticalScrollIndicator={false}
+      >
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
@@ -84,7 +112,7 @@ export default function ProfileScreen() {
           end={{ x: 1, y: 1 }}
           style={styles.userCardGradient}
         >
-          <View style={styles.avatar}>
+          <TouchableOpacity style={styles.avatar} onPress={() => setShowEditModal(true)}>
             <LinearGradient
               colors={[...Gradients.primary]}
               style={styles.avatarGradient}
@@ -92,32 +120,20 @@ export default function ProfileScreen() {
               <Text style={styles.avatarText}>
                 {user?.name?.charAt(0) || 'A'}
               </Text>
+              <View style={styles.editIconBadge}>
+                 <Ionicons name="pencil" size={10} color={theme.textInverse} />
+              </View>
             </LinearGradient>
-          </View>
+          </TouchableOpacity>
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{user?.name || 'Demo User'}</Text>
             <Text style={styles.userEmail}>{user?.email || 'demo@bullbridge.app'}</Text>
             <View style={styles.levelBadge}>
               <Ionicons name="school-outline" size={12} color={theme.primary} />
-              <Text style={styles.levelText}>{user?.experienceLevel || 'Intermediate'}</Text>
+              <Text style={styles.levelText}>{user?.experienceLevel || 'Beginner'}</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.editButton}>
-            <Ionicons name="create-outline" size={20} color={theme.primary} />
-          </TouchableOpacity>
         </LinearGradient>
-      </View>
-
-      {/* Interest Sectors */}
-      <View style={styles.sectorsSection}>
-        <Text style={styles.sectionLabel}>Sectors of Interest</Text>
-        <View style={styles.sectorChips}>
-          {(user?.sectors || ['Tech', 'Banking', 'Pharma']).map((sector) => (
-            <View key={sector} style={styles.sectorChip}>
-              <Text style={styles.sectorChipText}>{sector}</Text>
-            </View>
-          ))}
-        </View>
       </View>
 
       {/* Menu Sections */}
@@ -157,9 +173,149 @@ export default function ProfileScreen() {
       <View style={styles.appInfo}>
         <Text style={styles.appInfoText}>BullBridge v2.0</Text>
         <Text style={styles.appInfoText}>Data sourced from Yahoo Finance</Text>
-        <Text style={styles.appInfoText}>15-20 minute delay during market hours</Text>
       </View>
+
+      {/* Experience Level Modal */}
+      <Modal visible={showLevelModal} transparent animationType="fade">
+        <Pressable style={styles.modalOverlay} onPress={() => setShowLevelModal(false)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Experience Level</Text>
+            {EXPERIENCE_LEVELS.map((level) => (
+              <TouchableOpacity
+                key={level}
+                style={[styles.modalItem, user?.experienceLevel === level && styles.modalItemActive]}
+                onPress={() => {
+                  updateProfile({ experienceLevel: level });
+                  setShowLevelModal(false);
+                }}
+              >
+                <Text style={[styles.modalItemText, user?.experienceLevel === level && styles.modalItemTextActive]}>
+                  {level}
+                </Text>
+                {user?.experienceLevel === level && <Ionicons name="checkmark" size={20} color={theme.primary} />}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Sector Modal */}
+      <Modal visible={showSectorModal} transparent animationType="fade">
+        <Pressable style={styles.modalOverlay} onPress={() => setShowSectorModal(false)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Sector Interests</Text>
+            <FlatList
+              data={ALL_SECTORS}
+              keyExtractor={(item) => item}
+              renderItem={({ item }) => {
+                const isSelected = user?.sectors?.includes(item);
+                return (
+                  <TouchableOpacity
+                    style={[styles.modalItem, isSelected && styles.modalItemActive]}
+                    onPress={() => {
+                      const currentSectors = user?.sectors || [];
+                      const nextSectors = isSelected
+                        ? currentSectors.filter((s) => s !== item)
+                        : [...currentSectors, item];
+                      updateProfile({ sectors: nextSectors });
+                    }}
+                  >
+                    <Text style={[styles.modalItemText, isSelected && styles.modalItemTextActive]}>
+                      {item}
+                    </Text>
+                    <Ionicons 
+                      name={isSelected ? 'checkbox' : 'square-outline'} 
+                      size={20} 
+                      color={isSelected ? theme.primary : theme.textMuted} 
+                    />
+                  </TouchableOpacity>
+                );
+              }}
+            />
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowSectorModal(false)}>
+               <Text style={styles.modalCloseBtnText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+      {/* Profile Edit Modal */}
+      <ProfileEditModal 
+        visible={showEditModal} 
+        onClose={() => setShowEditModal(false)} 
+      />
     </ScrollView>
+    </View>
+  );
+}
+
+function ProfileEditModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { theme } = useTheme();
+  const styles = getStyles(theme);
+  const { user, updateProfile } = useAuthStore();
+  
+  const [name, setName] = useState(user?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [password, setPassword] = useState('••••••••');
+
+  const handleSave = () => {
+    updateProfile({ name, email });
+    onClose();
+    Alert.alert('Success', 'Profile updated successfully');
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide">
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Edit Profile</Text>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Full Name</Text>
+            <TextInput
+              style={styles.input}
+              value={name}
+              onChangeText={setName}
+              placeholder="Enter name"
+              placeholderTextColor={theme.textMuted}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Email Address</Text>
+            <TextInput
+              style={styles.input}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              placeholder="Enter email"
+              placeholderTextColor={theme.textMuted}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Password</Text>
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="Enter new password"
+              placeholderTextColor={theme.textMuted}
+            />
+          </View>
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: theme.backgroundTertiary }]} onPress={onClose}>
+              <Text style={[styles.modalBtnText, { color: theme.textSecondary }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: theme.primary }]} onPress={handleSave}>
+              <Text style={[styles.modalBtnText, { color: theme.textInverse }]}>Save Changes</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -180,9 +336,14 @@ function getStyles(theme: ThemeColors) {
     avatar: { marginRight: Spacing.base },
     avatarGradient: {
       width: 56, height: 56, borderRadius: 28,
-      alignItems: 'center', justifyContent: 'center',
+      alignItems: 'center', justifyContent: 'center', position: 'relative',
     },
     avatarText: { fontSize: Typography.xl, fontWeight: Typography.bold, color: theme.textInverse },
+    editIconBadge: {
+      position: 'absolute', bottom: -2, right: -2, width: 20, height: 20,
+      borderRadius: 10, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center',
+      borderWidth: 2, borderColor: theme.background,
+    },
     userInfo: { flex: 1 },
     userName: { fontSize: Typography.lg, fontWeight: Typography.bold, color: theme.textPrimary },
     userEmail: { fontSize: Typography.sm, color: theme.textSecondary, marginTop: 2 },
@@ -192,16 +353,6 @@ function getStyles(theme: ThemeColors) {
       borderRadius: BorderRadius.full, alignSelf: 'flex-start', marginTop: 6,
     },
     levelText: { fontSize: Typography.xs, color: theme.primary, fontWeight: Typography.semibold },
-    editButton: { padding: Spacing.sm },
-    sectorsSection: { paddingHorizontal: Spacing.xl, marginBottom: Spacing.lg },
-    sectionLabel: { fontSize: Typography.sm, color: theme.textSecondary, marginBottom: Spacing.sm },
-    sectorChips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-    sectorChip: {
-      backgroundColor: theme.surface, paddingHorizontal: Spacing.md,
-      paddingVertical: Spacing.xs, borderRadius: BorderRadius.full,
-      borderWidth: 1, borderColor: theme.border,
-    },
-    sectorChipText: { fontSize: Typography.sm, color: theme.textSecondary },
     menuSection: { paddingHorizontal: Spacing.xl, marginBottom: Spacing.lg },
     menuSectionTitle: {
       fontSize: Typography.sm, color: theme.textMuted, fontWeight: Typography.semibold,
@@ -221,7 +372,7 @@ function getStyles(theme: ThemeColors) {
       alignItems: 'center', justifyContent: 'center', marginRight: Spacing.md,
     },
     menuItemLabel: { flex: 1, fontSize: Typography.base, color: theme.textPrimary },
-    menuItemTrailing: { fontSize: Typography.sm, color: theme.textMuted },
+    menuItemTrailing: { fontSize: Typography.sm, color: theme.textMuted, marginRight: 8 },
     logoutButton: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
       gap: Spacing.sm, marginHorizontal: Spacing.xl,
@@ -232,6 +383,47 @@ function getStyles(theme: ThemeColors) {
     logoutText: { fontSize: Typography.md, color: theme.bearish, fontWeight: Typography.semibold },
     appInfo: { alignItems: 'center', paddingBottom: Spacing.lg, gap: 4 },
     appInfoText: { fontSize: 10, color: theme.textMuted },
+    
+    // Modal
+    modalOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center', alignItems: 'center', padding: Spacing.xl,
+    },
+    modalContent: {
+      width: '100%', backgroundColor: theme.surface, borderRadius: BorderRadius.xl,
+      padding: Spacing.lg, borderWidth: 1, borderColor: theme.border,
+      maxHeight: '80%',
+    },
+    modalTitle: {
+       fontSize: Typography.lg, fontWeight: Typography.bold, color: theme.textPrimary,
+       marginBottom: Spacing.lg, textAlign: 'center'
+    },
+    modalItem: {
+       flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+       paddingVertical: Spacing.md, paddingHorizontal: Spacing.base,
+       borderRadius: BorderRadius.md, marginBottom: Spacing.xs
+    },
+    modalItemActive: { backgroundColor: theme.primaryMuted },
+    modalItemText: { fontSize: Typography.base, color: theme.textPrimary },
+    modalItemTextActive: { color: theme.primary, fontWeight: Typography.bold },
+    modalCloseBtn: {
+       marginTop: Spacing.lg, backgroundColor: theme.primary,
+       paddingVertical: Spacing.md, borderRadius: BorderRadius.lg,
+       alignItems: 'center'
+    },
+    modalCloseBtnText: { color: theme.textInverse, fontWeight: Typography.bold },
+
+    // Input styles
+    inputGroup: { marginBottom: Spacing.lg },
+    inputLabel: { fontSize: Typography.xs, color: theme.textMuted, fontWeight: Typography.bold, marginBottom: 6, textTransform: 'uppercase' },
+    input: {
+      backgroundColor: theme.backgroundTertiary, borderRadius: BorderRadius.md,
+      paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+      color: theme.textPrimary, fontSize: Typography.base,
+      borderWidth: 1, borderColor: theme.border,
+    },
+    modalActions: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.md },
+    modalBtn: { flex: 1, paddingVertical: Spacing.md, borderRadius: BorderRadius.lg, alignItems: 'center' },
+    modalBtnText: { fontWeight: Typography.bold, fontSize: Typography.base },
   });
 }
-

@@ -56,8 +56,11 @@ export default function SearchScreen() {
             <Text style={styles.stockIconText}>{item.name.charAt(0)}</Text>
           </View>
           <View style={styles.stockInfo}>
-            <Text style={styles.stockName}>{item.name}</Text>
-            <Text style={styles.stockTicker}>{item.ticker.replace('.NS', '')} · {item.exchange}</Text>
+            <Text style={styles.stockName} numberOfLines={1}>{item.name}</Text>
+            <Text style={styles.stockTicker}>
+              {item.ticker.replace('.NS', '')} · {item.exchange}
+              {item.sector && item.sector !== '-' ? ` · ${item.sector}` : ''}
+            </Text>
           </View>
           <View style={styles.stockPriceCol}>
             <Text style={styles.stockPrice}>₹{item.price.toLocaleString('en-IN')}</Text>

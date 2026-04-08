@@ -14,6 +14,9 @@ export interface PeerStock {
   ticker: string;
   marketCap: string;
   pe: number;
+  pb?: number;
+  eps?: number;
+  yield?: number;
   price: number;
 }
 
@@ -38,11 +41,14 @@ export interface Stock {
   low52Week: number;
   marketCap: string;
   pe: number;
+  pb: number;
+  eps: number;
   dividendYield: number;
   previousClose: number;
   open: number;
   sector: string;
   about?: string;
+  history?: string;
   pros?: string[];
   cons?: string[];
   peers?: PeerStock[];
@@ -78,6 +84,7 @@ export interface AIPrediction {
   confidence: number; // 0-100
   horizon: 'T+1' | 'T+5';
   factors: string[];
+  reasoning: string;
   accuracy: number; // historical accuracy %
 }
 
